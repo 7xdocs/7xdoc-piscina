@@ -1,0 +1,94 @@
+---
+id: Move
+sidebar_position: 8
+---
+
+import { WorkerWrapperComponent } from "@site/src/components/WorkerWrapper.mdx";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+Piscina 提供了一个 `move()` 函数，允许在主线程和 worker 线程之间传输数据。下面的示例将向你展示如何使用 `Piscina.move()` 传输 `ArrayBuffer` 而无需克隆，这可以显著提高大型数据传输的性能。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="index.js"
+const Piscina = require('piscina');
+const { resolve } = require('path');
+
+const pool = new Piscina({
+  filename: resolve(__dirname, 'worker.js'),
+  idleTimeout: 1000
+});
+
+(async () => {
+  // The task will transfer an ArrayBuffer
+  // back to the main thread rather than
+  // cloning it.
+  const u8 = await pool.run(Piscina.move(new Uint8Array(2)));
+  console.log(u8.length);
+})();
+```
+
+</TabItem>
+
+<TabItem value="Typescript">
+
+```typescript title="index.ts"
+import Piscina from 'piscina';
+import { resolve } from 'path';
+
+const pool = new Piscina({
+  filename: resolve(__dirname, 'worker.ts'),
+  idleTimeout: 1000
+});
+
+(async () => {
+  // The task will transfer an ArrayBuffer
+  // back to the main thread rather than
+  // cloning it.
+  const u8 = await pool.run(Piscina.move(new Uint8Array(2)));
+  console.log(u8.length);
+})();
+```
+
+</TabItem>
+</Tabs>
+
+worker 文件使用 `move()` 将数据传回主线程：
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="worker.js"
+const { move } = require('piscina');
+
+module.exports = () => {
+  // Using move causes the Uint8Array to be
+  // transferred rather than cloned.
+  return move(new Uint8Array(10));
+};
+```
+
+</TabItem>
+
+<TabItem value="Typescript">
+
+```typescript title="worker.ts"
+import { resolve } from "path";
+import { move } from "piscina";
+
+
+export const filename = resolve(__filename);
+
+export default (): Uint8Array => {
+  // Using move causes the Uint8Array to be
+  // transferred rather than cloned.
+  return move(new Uint8Array(10)) as Uint8Array;
+};
+
+```
+</TabItem>
+</Tabs>
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/move) 上查看此示例。

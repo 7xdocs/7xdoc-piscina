@@ -1,0 +1,174 @@
+---
+id: Task Queue
+sidebar_position: 22
+---
+
+import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+你可以通过实现自定义任务队列来扩展 Piscina 的功能。它使用优先级队列来管理任务，而不是默认的 FIFO（先进先出）队列。
+
+主脚本 (`index.js`) 定义了一个包装 `shuffled-priority-queue` 包的 `PriorityTaskQueue` 类。该类实现了 Piscina 对任务队列所期望的必要方法（`push`、`remove`、`shift`）。队列根据任务选项中指定的 `priority` 值对任务进行优先级排序。
+
+:::note
+任务优先级仅影响排队的任务。如果提交任务时有 worker 立即由可用，则无论其优先级如何，它都将被处理。优先级队列在任务数量多于可用 worker 数量时发挥作用。
+:::
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="index.js"
+'use strict';
+
+const spq = require('shuffled-priority-queue');
+const Piscina = require('piscina');
+const { resolve } = require('path');
+
+const kItem = Symbol('item');
+
+class PriorityTaskQueue {
+  queue = spq();
+
+  get size () { return this.queue.length; }
+
+  push (value) {
+    const queueOptions = value[Piscina.queueOptionsSymbol];
+    const priority = queueOptions ? (queueOptions.priority || 0) : 0;
+    value[kItem] = this.queue.add({ priority, value });
+  }
+
+  remove (value) {
+    this.queue.remove(value[kItem]);
+  }
+
+  shift () {
+    return this.queue.shift().value;
+  }
+}
+
+const pool = new Piscina({
+  filename: resolve(__dirname, 'worker.js'),
+  taskQueue: new PriorityTaskQueue(),
+  maxThreads: 4
+});
+
+function makeTask (task, priority) {
+  return { ...task, [Piscina.queueOptionsSymbol]: { priority } };
+}
+
+(async () => {
+  // Submit enough tasks to ensure that at least some are queued
+  console.log(await Promise.all([
+    pool.run(makeTask({ priority: 1 }, 1)),
+    pool.run(makeTask({ priority: 2 }, 2)),
+    pool.run(makeTask({ priority: 3 }, 3)),
+    pool.run(makeTask({ priority: 4 }, 4)),
+    pool.run(makeTask({ priority: 5 }, 5)),
+    pool.run(makeTask({ priority: 6 }, 6)),
+    pool.run(makeTask({ priority: 7 }, 7)),
+    pool.run(makeTask({ priority: 8 }, 8))
+  ]));
+})();
+```
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="index.ts"
+import { resolve } from 'path';
+import Piscina from 'piscina';
+const spq = require('shuffled-priority-queue');
+import { filename } from './worker';
+const kItem = Symbol('item');
+
+class PriorityTaskQueue {
+  queue = spq();
+
+  get size() {
+    return this.queue.length;
+  }
+
+  push(value: any) {
+    const queueOptions = value[Piscina.queueOptionsSymbol];
+    const priority = queueOptions ? queueOptions.priority || 0 : 0;
+    value[kItem] = this.queue.add({ priority, value });
+  }
+
+  remove(value: any) {
+    this.queue.remove(value[kItem]);
+  }
+
+  shift() {
+    return this.queue.shift().value;
+  }
+}
+
+const pool = new Piscina({
+  filename: resolve(__dirname, 'workerWrapper.js'),
+  workerData: { fullpath: filename },
+  taskQueue: new PriorityTaskQueue(),
+  maxThreads: 4
+});
+
+function makeTask(task: { priority: number }, priority: number) {
+  return { ...task, [Piscina.queueOptionsSymbol]: { priority } };
+}
+(async () => {
+  // Submit enough tasks to ensure that at least some are queued
+  try {
+    console.log(
+      await Promise.all([
+        pool.run(makeTask({ priority: 1 }, 1)),
+        pool.run(makeTask({ priority: 2 }, 2)),
+        pool.run(makeTask({ priority: 3 }, 3)),
+        pool.run(makeTask({ priority: 4 }, 4)),
+        pool.run(makeTask({ priority: 5 }, 5)),
+        pool.run(makeTask({ priority: 6 }, 6)),
+        pool.run(makeTask({ priority: 7 }, 7)),
+        pool.run(makeTask({ priority: 8 }, 8))
+      ])
+    );
+  } catch (error) {
+    console.log(error);
+  }
+})();
+```
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+The worker script (`worker.js`) simulates some work by sleeping for 100ms, then logs and returns the priority of the task it processed. This allows us to observe the order in which tasks are executed.
+
+<Tabs>
+<TabItem value="Javascript">
+```javascript title="worker.js"
+'use strict';
+
+const { promisify } = require('util');
+const sleep = promisify(setTimeout);
+
+module.exports = async ({ priority }) => {
+  await sleep(100);
+  process._rawDebug(`${priority}`);
+  return priority;
+};
+```
+
+</TabItem>
+<TabItem value="Typescript">
+```typescript title="worker.ts"
+import { promisify } from 'util';
+
+const sleep = promisify(setTimeout);
+
+export default async ({ priority }: { priority: number }): Promise<number> => {
+  await sleep(100);
+  process._rawDebug(`${priority}`);
+  return priority;
+};
+export const filename = __filename;
+```
+</TabItem>
+</Tabs>
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/task-queue) 上查看此示例。

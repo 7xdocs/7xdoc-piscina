@@ -1,0 +1,113 @@
+---
+id: Typescript
+sidebar_position: 4
+---
+import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
+
+虽然 Piscina 本身是用 TypeScript 编写的，并且开箱即用地支持 TypeScript，但在尝试直接使用 `.ts` 文件作为 worker 文件时会出现复杂情况，因为 Node.js 不原生支持 TypeScript。
+
+为了解决这个问题，你通常需要先将 TypeScript worker 文件编译为 JavaScript，然后将 Piscina 的 `filename` 选项指向编译后的 JavaScript 文件。考虑以下方法：
+
+## 方法 1：使用 Worker 包装器文件和 `ts_node`
+
+worker 包装器检查提供的文件路径是否以 `.ts` 结尾，并注册 `ts-node` 编译器来处理 TypeScript 文件。
+
+<WorkerWrapperComponent/>
+
+在你的 `worker.ts` 中：
+
+```typescript title='worker.ts'
+
+import { resolve } from 'path';
+
+export const filename = resolve(__filename);
+
+interface Inputs {
+  a: number;
+  b: number;
+}
+
+export function addNumbers({ a, b }: Inputs): number {
+  return a + b;
+}
+```
+
+在主应用程序中：
+
+```typescript title='main.ts'
+
+import Piscina from 'piscina';
+import { resolve } from 'path';
+import { filename } from './worker';
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, './workerWrapper.js'),
+  workerData: { fullpath: filename },
+});
+
+(async () => {
+  const result = await piscina.run({ a: 2, b: 3 }, { name: 'addNumbers' });
+  console.log('Result:', result);
+})();
+```
+
+## 方法 2：内联 Worker 代码
+
+或者，你可以将 worker 代码包含在与主代码相同的文件中，并使用 `worker_threads` 中的 `isMainThread` 标志来确定代码是在主线程还是工作线程中运行。
+
+```typescript title="main.ts"
+
+import Piscina from 'piscina';
+import { isMainThread } from 'worker_threads';
+
+interface Inputs {
+  a: number;
+  b: number;
+}
+
+if (isMainThread) {
+  const piscina = new Piscina({ filename: __filename });
+
+  (async () => {
+    const task: Inputs = { a: 1, b: 2 };
+    console.log(await piscina.run(task));
+  })();
+} else {
+  export default ({ a, b }: Inputs): number => {
+    return a + b;
+  };
+}
+```
+你也可以查看这个[github](https://github.com/piscinajs/piscina/tree/current/examples/typescript)上的例子。
+
+## 方法 3：Node.js 原生 TypeScript 支持
+
+从 Node.js 23.6.0+ 开始，你可以使用 Node.js 的[实验性 TypeScript 支持](https://nodejs.org/api/typescript.html)直接运行 TypeScript 文件。这消除了对外部 TypeScript 编译器或构建步骤的需求。
+
+对于 Node.js 版本 22.6.0 到 23.5.0，你需要显式启用 `--experimental-strip-types` 标志。但是，从 Node.js 23.6.0+ 开始，类型剥离（type stripping）默认已启用。
+
+```typescript title='worker.ts'
+
+interface Inputs {
+  a: number;
+  b: number;
+}
+
+export function addNumbers({ a, b }: Inputs): number {
+  return a + b;
+}
+```
+
+```typescript title='main.ts'
+
+import Piscina from 'piscina';
+
+const piscina = new Piscina({
+  filename: new URL("./worker.ts", import.meta.url).href,
+});
+
+(async () => {
+  const result = await piscina.run({ a: 2, b: 3 }, { name: 'addNumbers' });
+  console.log('Result:', result);
+})();
+```

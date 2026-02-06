@@ -1,0 +1,47 @@
+---
+id: N-API Native Addon
+sidebar_position: 11
+---
+
+对于 CPU 密集型任务，或者使用 C++ 或 Rust 等语言实现 worker 时，你可以利用 Piscina 对原生插件作为 worker 实现的支持。
+
+## 设置
+
+首先，从 [Piscina GitHub 仓库](https://github.com/piscinajs/piscina/tree/current/examples/n-api) 获取示例。
+
+然后安装依赖项：
+
+```console
+npm i
+```
+
+构建原生插件工件：
+
+```console
+npm run prebuild
+```
+
+`prebuild` 命令将构建原生插件的二进制工件，并将它们放入 `prebuilds` 文件夹中。由于预构建的工作方式，我们需要使用中间 JavaScript 文件来加载和导出它们。对于此示例原生插件，你将在 `examples` 文件夹中找到它。
+
+`index.js` 演示了如何加载和使用原生插件作为 worker 实现：
+
+```js title="index.js"
+const Piscina = require('piscina');
+const { resolve } = require('path');
+
+const pool = new Piscina({
+  filename: resolve(__dirname, 'example')
+});
+
+(async () => {
+  // Submit 5 concurrent tasks
+  console.log(await Promise.all([
+    pool.run(),
+    pool.run(),
+    pool.run(),
+    pool.run(),
+    pool.run()
+  ]));
+})();
+```
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/n-api) 上查看此示例。

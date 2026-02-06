@@ -1,0 +1,172 @@
+---
+id: Managing Worker Threads
+sidebar_position: 3
+---
+import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+## 延迟 Worker 的可用性
+
+工作线程在 Piscina 确定它“就绪”之前不会被用于处理任务。默认情况下，只要 Piscina 加载了 worker 并获取了导出的处理函数的引用，worker 就准备好了。
+
+有时可能需要延迟 worker 的可用性，以便 worker 初始化它运行所需的任何资源。
+为了支持这种情况，worker 模块可以导出一个 `Promise`，该 Promise 解析为处理函数，而不是直接导出函数：
+
+<Tabs>
+<TabItem value="Javascript">
+
+```js tab={"label":"Javascript"} title="worker.js"
+async function initialize() {
+  await someAsyncInitializationActivity();
+  return ({ a, b }) => a + b;
+}
+
+module.exports = initialize();
+```
+</TabItem>
+<TabItem value="Typescript">
+```js tab={"label":"Typescript"} title="worker.ts"
+interface OperationInput {
+  a: number;
+  b: number;
+}
+export async function initialize(): Promise<(input: OperationInput) => number> {
+  await someAsyncInitializationActivity();
+  return ({ a, b }) => a + b;
+}
+```
+</TabItem>
+</Tabs>
+
+
+Piscina 将等待导出的 Promise 解析后，才将该工作线程标记为可用。
+
+## 使用背压管理任务过载
+
+当设置了 `maxQueue` 选项时，一旦 `Piscina` 队列满了，就不能提交额外的任务，直到队列大小降至限制以下。`'drain'` 事件可用于在队列为空且所有任务已提交给 worker 处理时接收通知。
+
+下面的示例展示了如何使用 Node.js 流向 Piscina worker 池提供数据：
+
+<Tabs>
+<TabItem value="Javascript">
+
+```js tab={"label":"Javascript"}
+"use strict";
+
+const { resolve } = require("path");
+const Pool = require("piscina");
+
+const pool = new Pool({
+  filename: resolve(__dirname, "worker.js"),
+  maxQueue: "auto",
+});
+
+const stream = getStreamSomehow();
+stream.setEncoding("utf8");
+
+pool.on("drain", () => {
+  if (stream.isPaused()) {
+    console.log("resuming...", counter, pool.queueSize);
+    stream.resume();
+  }
+});
+
+stream
+  .on("data", (data) => {
+    pool.run(data);
+    if (pool.queueSize === pool.options.maxQueue) {
+      console.log("pausing...", counter, pool.queueSize);
+      stream.pause();
+    }
+  })
+  .on("error", console.error)
+  .on("end", () => {
+    console.log("done");
+  });
+```
+
+</TabItem>
+<TabItem value="Typescript">
+```js tab={"label":"Typescript","span":2}
+import Pool from "piscina";
+import { resolve } from "path";
+import { filename } from "./worker.js";
+
+const pool = new Pool({
+  filename: resolve(__dirname, "./workerWrapper.js"),
+  workerData: { fullpath: filename },
+  maxQueue: "auto",
+});
+
+const stream = getStreamSomehow();
+stream.setEncoding("utf8");
+
+let counter = 0;
+
+pool.on("drain", () => {
+  if (stream.isPaused()) {
+    console.log("resuming...", counter, pool.queueSize);
+    stream.resume();
+  }
+});
+
+stream
+  .on("data", (data: string) => {
+    pool.run(data);
+    if (pool.queueSize === pool.options.maxQueue) {
+      console.log("pausing...", counter, pool.queueSize);
+      stream.pause();
+    }
+  })
+  .on("error", console.error)
+  .on("end", () => {
+    console.log("done");
+  });
+```
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+
+## 超出范围的异步代码
+
+工作线程**仅**在返回结果的那一刻处于活动状态，这可以是同步调用的结果，也可以是将来会 fulfill/reject 的 Promise。一旦完成，Piscina 将等待 `stdout` 和 `stderr` 刷新，然后暂停 worker 的事件循环，直到下一次调用。如果在返回之前调度了异步代码而没有等待（await），由于 Piscina 无法检测到这一点，该代码执行将在下一次调用时恢复。因此，强烈建议在返回结果之前正确处理所有异步任务，因为这可能会使你的代码不可预测。
+
+例如：
+<Tabs>
+<TabItem value="Javascript">
+```js tab={"label":"Javascript"}
+const { setTimeout } = require("timers/promises");
+
+module.exports = ({ a, b }) => {
+  // This promise should be awaited
+  setTimeout(1000).then(() => {
+    console.log("Working"); // This will **not** run during the same worker call
+  });
+
+  return a + b;
+};
+```
+
+
+</TabItem>
+<TabItem value="Typescript">
+```js tab={"label":"Typescript"}
+import { setTimeout } from "timers/promises";
+
+interface OperationInput {
+  a: number;
+  b: number;
+}
+
+export async ({ a, b }: OperationInput): Promise<number> => {
+  // This promise should be awaited
+  await setTimeout(1000);
+  console.log("Working"); // This will **not** run during the same worker call
+
+  return a + b;
+};
+```
+</TabItem>
+</Tabs>

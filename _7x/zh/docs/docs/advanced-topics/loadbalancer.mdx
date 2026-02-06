@@ -1,0 +1,37 @@
+---
+id: Custom Load Balancers
+sidebar_position: 2
+---
+
+[负载均衡器](https://www.cloudflare.com/learning/performance/what-is-load-balancing/)是任何分布式工作负载的关键部分。
+Piscina 默认使用 [基于资源](https://www.cloudflare.com/en-gb/learning/performance/types-of-load-balancing-algorithms/) 的算法（最不繁忙）来在池设置的不同 worker 之间分发负载。
+
+### 选择负载均衡算法
+
+选择正确的算法很大程度上取决于每个具体问题的需求，并通过针对几种工作负载变体测试实现来评估它们。
+
+算法可以分为：
+
+#### 动态
+
+专注于根据工作负载的启发式方法做出决策。
+
+它的目标是通过适应环境来平衡工作，并在尝试更好地利用资源或最小化完成每个单独工作负载的时间的不同 worker/节点之间平均分发工作负载。
+
+> Piscina 使用动态算法，基于 worker 的繁忙程度（最不繁忙）
+
+#### 静态
+
+旨在根据一组预定义因素分发工作负载。
+它不适应环境，而是旨在根据预先设置的值保持分发的状态。
+
+这在几种情况下可能很有用，例如我们希望工作负载均匀分布或随时间推移坚持使用特定的 worker/节点。
+
+> 轮询 (Round Robin)、一致性哈希 (Ring Hash) 只是这些算法的例子
+
+强烈建议理解问题和你的池将面临的工作负载，并针对符合你用例的不同算法进行大量测试，并结合多种组合以更好地了解其影响以及如何管理它。
+
+### 资源
+
+- [负载均衡算法](https://en.wikipedia.org/wiki/Load_balancing_(computing))
+- [负载均衡算法的类型](https://www.cloudflare.com/en-gb/learning/performance/types-of-load-balancing-algorithms/)

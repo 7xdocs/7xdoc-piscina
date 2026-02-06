@@ -1,0 +1,46 @@
+---
+id: Electron
+sidebar_position: 4
+---
+
+import { WorkerWrapperComponent } from "@site/src/components/WorkerWrapper.mdx";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+在你的应用程序中使用 worker 和池可以极大地提高性能和稳定性。渲染器在主线程上处理，因此任何处理器密集型任务都会导致用户挂起，要么提供糟糕的用户体验，要么在许多情况下导致可怕的 `pthread_kill` 并使应用程序崩溃。
+
+在开发中实现 worker 相对简单，但在打包构建时可能会遇到一些问题。
+
+## electron-vite
+注意：虽然 Electron / electron-vite 官方支持 ESM，但由于 rollup 打包 worker 的方式，electron 最终无法读取 worker。你必须在 electron 中使用 CJS 来读取 worker 模块。此外，用于混淆代码的字节码插件也仅适用于 CJS。
+
+在你的主文件中，通过在路径末尾附加 `\*?modulePath` 来导入 worker 的路径（不是包装器 - 因为 rollup 不需要包装器）。
+
+```typescript
+import workerPath from './worker?modulePath';
+```
+
+在编译期间，rollup 现在将在给定路径的主文件夹输出中自动为 worker 创建一个单独的文件。上面的路径解析，我们现在可以在运行时在 Piscina 中使用它。
+
+使用 Piscina 创建一个池，并改用导入的路径。
+
+对于使用 TypeScript 的人，不需要指南中引用的文件名导出。
+
+```typescript title="index.ts"
+const pool = new Piscina({
+	filename: workerPath,
+	workerData: {
+		userPath: path.join(app.getPath("userData")),
+	},
+});
+```
+
+Electron 特定模块在 worker 内部不可访问。
+
+如果你需要访问 electron 提供的信息（例如 `app.getPath("userData")`），你需要将该数据作为 workerData 传入。
+
+就是这样！你现在可以像在 Piscina 文档中一样正常使用池。
+
+如需进一步帮助，请参考 electron-vite 文档的 worker 部分。
+
+https://electron-vite.org/guide/dev#worker-threads

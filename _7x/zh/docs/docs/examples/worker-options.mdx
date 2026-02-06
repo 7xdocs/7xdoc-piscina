@@ -1,0 +1,98 @@
+---
+id: Worker Options
+sidebar_position: 26
+---
+
+import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+
+Piscina 允许你自定义 worker 线程的环境和运行时选项。你可以为 worker 进程设置环境变量、命令行参数和其他选项。
+
+这在以下情况下很有用：
+
+- 将配置或特定于环境的数据传递给 worker
+- 控制 worker 中的 Node.js 运行时行为
+- 向 worker 提供初始数据，而无需将其包含在每个任务中
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="index.js"
+'use strict';
+
+const Piscina = require('../..');
+const { resolve } = require('path');
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, 'worker.js'),
+  env: { A: '123' },
+  argv: ['a', 'b', 'c'],
+  execArgv: ['--no-warnings'],
+  workerData: 'ABC'
+});
+
+(async function () {
+  const result = await piscina.run({ a: 4, b: 6 });
+  console.log(result); // Prints 10
+})();
+```
+
+```javascript title="worker.js"
+'use strict';
+
+const Piscina = require('../..');
+const { format } = require('util');
+
+module.exports = ({ a, b }) => {
+  console.log(`
+process.argv: ${process.argv.slice(2)}
+process.execArgv: ${process.execArgv}
+process.env: ${format({ ...process.env })}
+workerData: ${Piscina.workerData}`);
+  return a + b;
+};
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="index.ts"
+import { resolve } from 'path';
+import Piscina from 'piscina';
+import { filename } from './worker';
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, 'workerWrapper.js'),
+  workerData: { fullpath: filename },
+  env: { A: '123' },
+  argv: ['a', 'b', 'c'],
+  execArgv: ['--no-warnings'],
+});
+
+(async function () {
+  const result = await piscina.run({ a: 4, b: 6 });
+  console.log(result); // Prints 10
+})();
+```
+
+```typescript title="worker.ts"
+import Piscina from 'piscina';
+import { format } from 'util';
+
+export default ({ a, b }: { a: number, b: number }): number => {
+  console.log(`
+process.argv: ${process.argv.slice(2)}
+process.execArgv: ${process.execArgv}
+process.env: ${format({ ...process.env })}
+workerData: ${Piscina.workerData}`);
+  return a + b;
+};
+```
+
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/worker_options) 上查看此示例。

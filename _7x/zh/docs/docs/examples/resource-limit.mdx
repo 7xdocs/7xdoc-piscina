@@ -1,0 +1,110 @@
+---
+id: Resource Limits
+sidebar_position: 15
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { WorkerWrapperComponent } from '@site/src/components/WorkerWrapper.mdx';
+
+Piscina 允许你设置 worker 线程的资源限制，以防止它们消耗过多的内存。下面的示例将向你展示如何配置和使用资源限制来处理内存不足的情况。
+
+主文件设置了一个具有特定资源限制的 Piscina 实例：
+
+- `maxOldGenerationSizeMb`：将 V8 堆中老年代的最大大小限制为 16 MB。
+- `maxYoungGenerationSizeMb`：将 V8 堆中新生代的最大大小限制为 4 MB。
+- `codeRangeSizeMb`：将代码范围的大小限制为 16 MB。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="index.js"
+'use strict';
+
+const Piscina = require('piscina');
+const { resolve } = require('path');
+const { strictEqual } = require('assert');
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, 'worker.js'),
+  resourceLimits: {
+    maxOldGenerationSizeMb: 16,
+    maxYoungGenerationSizeMb: 4,
+    codeRangeSizeMb: 16
+  }
+});
+
+(async function () {
+  try {
+    await piscina.run();
+  } catch (err) {
+    console.log('Worker terminated due to resource limits');
+    strictEqual(err.code, 'ERR_WORKER_OUT_OF_MEMORY');
+  }
+})();
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="index.ts"
+import Piscina from 'piscina';
+import { resolve } from 'path';
+import { strictEqual } from 'assert';
+import { filename } from './worker';
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, 'workerWrapper.js'),
+  workerData: { fullpath: filename },
+  resourceLimits: {
+    maxOldGenerationSizeMb: 16,
+    maxYoungGenerationSizeMb: 4,
+    codeRangeSizeMb: 16
+  }
+});
+
+(async function () {
+  try {
+    await piscina.run({}, { name: 'memoryLeak' });
+  } catch (err) {
+    console.log('Worker terminated due to resource limits');
+    strictEqual((err as any).code, 'ERR_WORKER_OUT_OF_MEMORY');
+  }
+})();
+```
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+worker 文件包含一个故意导致内存泄漏的函数，通过创建一个无限增长的数组。这最终将超过主文件中设置的内存限制。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="worker.js"
+'use strict';
+
+module.exports = () => {
+  const array = [];
+  while (true) {
+    array.push([array]);
+  }
+};
+```
+
+</TabItem>
+<TabItem value="Typescript">
+```typescript title="worker.ts"
+export const filename = __filename;
+
+export function memoryLeak(): void {
+  const array: any[] = [];
+  while (true) {
+    array.push([array]);
+  }
+}
+```
+</TabItem>
+</Tabs>
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/resourceLimits) 上查看此示例。

@@ -1,0 +1,130 @@
+---
+id: Web Streams Transfer
+sidebar_position: 24
+---
+
+import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+
+使用 [Web Streams](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API) 和 Piscina，你可以创建数据处理管道。这对于涉及实时数据转换或分析的案例非常有用。
+
+在下面的主脚本中，我们设置了 Web Streams API 的三个关键组件：
+
+* 一个 `ReadableStream`，用于生成从 1 到 9 的数字序列，然后是 0。
+* 一个 `WritableStream`，用于简单地将接收到的每个块记录到控制台。
+* 一个 `TransformStream`，使用 Piscina worker 池处理每个块。
+
+TransformStream 的 `transform` 方法使用 `pool.run()` 在 worker 线程中处理每个块。这允许并行处理流数据。
+
+最后，脚本使用 `pipeThrough()` 和 `pipeTo()` 方法建立管道，将 `ReadableStream` 连接到 `TransformStream`，然后再连接到 `WritableStream`。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="worker.mjs"
+export default async function (num) {
+  return 'ABC'.repeat(num * num);
+}
+```
+
+```javascript title="index.mjs"
+import Piscina from 'piscina';
+import {
+  ReadableStream,
+  TransformStream,
+  WritableStream
+} from 'node:stream/web';
+
+const pool = new Piscina({
+  filename: new URL('./worker.mjs', import.meta.url).href
+});
+
+const readable = new ReadableStream({
+  start () {
+    this.chunks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+  },
+
+  pull (controller) {
+    const chunk = this.chunks.shift();
+    controller.enqueue(chunk);
+    if (this.chunks.length === 0) {
+      controller.close();
+    }
+  }
+});
+
+const writable = new WritableStream({
+  write (chunk) {
+    console.log(chunk);
+  }
+});
+
+const transform = new TransformStream({
+  async transform (chunk, controller) {
+    controller.enqueue(await pool.run(chunk));
+  }
+});
+
+readable.pipeThrough(transform).pipeTo(writable);
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="worker.ts"
+export default async function (num: number): Promise<string> {
+  return 'ABC'.repeat(num * num);
+}
+export const filename = __filename;
+```
+
+```typescript title="index.ts"
+import { resolve } from 'path';
+import Piscina from 'piscina';
+import {
+  ReadableStream,
+  WritableStream
+} from 'node:stream/web';
+import { filename } from './worker';
+
+const pool = new Piscina({
+  filename: resolve(__dirname, 'workerWrapper.js'),
+  workerData: { fullpath: filename },
+});
+
+const readable = new ReadableStream({
+  start () {
+    this.chunks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+  },
+
+  pull (controller) {
+    const chunk = this.chunks.shift();
+    controller.enqueue(chunk);
+    if (this.chunks.length === 0) {
+      controller.close();
+    }
+  }
+});
+
+const writable = new WritableStream({
+  write (chunk) {
+    console.log(chunk);
+  }
+});
+
+const transform = new TransformStream({
+  async transform (chunk, controller) {
+    controller.enqueue(await pool.run(chunk));
+  }
+});
+
+readable.pipeThrough(transform).pipeTo(writable);
+```
+
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/webstreams-transform) 上查看此示例。

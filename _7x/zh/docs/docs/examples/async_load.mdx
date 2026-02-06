@@ -1,0 +1,117 @@
+---
+id: Async Load
+sidebar_position: 2
+---
+
+import { WorkerWrapperComponent } from "@site/src/components/WorkerWrapper.mdx";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+Piscina 支持异步加载的 worker。此功能允许你在 worker 初始化期间执行异步操作，例如加载配置或建立数据库连接。
+
+例如，下面的主脚本创建一个 Piscina 池并从两个 worker 文件运行任务。
+
+<Tabs>
+<TabItem  value="Javascript">
+```js title="main.js"
+"use strict";
+
+const Piscina = require("../..");
+
+const pool = new Piscina();
+const { resolve } = require("path");
+
+(async () => {
+await Promise.all([
+pool.run({}, { filename: resolve(__dirname, "worker") }),
+pool.run({}, { filename: resolve(__dirname, "worker.mjs") }),
+]);
+})();
+
+````
+</TabItem>
+
+<TabItem  value="Typescript">
+```javascript title="main.ts"
+import Piscina from "piscina";
+import { resolve } from "path";
+import { filename } from "./worker";
+
+const pool = new Piscina({
+  workerData: { fullpath: filename },
+});
+
+(async () => {
+  try {
+    await Promise.all([
+      pool.run(
+        {},
+        {
+          name: "callSleep",
+          filename: resolve(__dirname, "./workerWrapper.js"),
+        }
+      ),
+      pool.run({}, { filename: resolve(__dirname, "worker.mjs") }),
+    ]);
+  } catch (error) {
+    console.log(error);
+  }
+})();
+
+```
+<WorkerWrapperComponent/>
+
+</TabItem>
+</Tabs>
+
+两个 worker 文件都演示了异步加载。它们使用 sleep 函数来模拟耗时 500 毫秒的异步操作。
+
+<Tabs>
+<TabItem value="Javascript">
+```js title="worker.js"
+"use strict";
+
+const { promisify } = require("util");
+const sleep = promisify(setTimeout);
+
+module.exports = (async () => {
+await sleep(500);
+return () => console.log("hello from an async loaded CommonJS worker");
+})();
+```
+</TabItem>
+
+<TabItem value="Typescript">
+```js title="worker.ts"
+import { promisify } from "util";
+import { resolve } from "path";
+
+export const filename = resolve(__filename);
+
+const sleep = promisify(setTimeout);
+
+export async function callSleep(): Promise<void> {
+  await sleep(500);
+  return console.log("hello from an async loaded TypeScript worker");
+}
+```
+</TabItem>
+
+</Tabs>
+
+在 `worker.mjs` 中：
+
+```js title="worker.mjs"
+// eslint-disable-next-line no-eval
+import util from "util";
+const sleep = util.promisify(setTimeout);
+
+async function load() {
+  await sleep(500);
+  return () => console.log("hello from an async loaded ESM worker");
+}
+
+export default load();
+```
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/async_load) 上查看此示例。

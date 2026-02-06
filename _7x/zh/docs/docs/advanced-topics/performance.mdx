@@ -1,0 +1,56 @@
+---
+id: Performance Notes
+sidebar_position: 3
+---
+
+Worker 通常针对卸载同步的、计算密集型操作进行了优化，使其脱离主 Node.js 事件循环线程。
+虽然可以在 Worker 中执行异步操作和 I/O，但这样做的性能优势微乎其微。
+
+特别值得注意的是，Node.js 中的异步操作，包括文件系统操作等 I/O 或加密操作或压缩算法等 CPU 密集型任务，已经由 Node.js 和 libuv 在进程级别并行执行。这意味着将此类异步操作移动到 Piscina worker 中几乎不会产生性能影响（参见 examples/scrypt 示例）。
+
+### 队列大小
+
+Piscina 提供了配置池中活动的最小和最大工作线程数的能力，以及设置等待空闲 worker 的排队任务数量的限制。重要的是要注意，相对于工作线程数量，将 `maxQueue` 大小设置得太高可能会对性能和内存使用产生不利影响。
+将 `maxQueue` 大小设置得太小也可能会产生问题，因为这样做可能会导致你的工作线程变为空闲并被关闭。我们的测试表明，大约为最大线程数平方的 `maxQueue` 大小通常就足够了，并且在许多情况下表现良好，但这将根据你的工作负载而有很大差异。重要的是要对你的 worker 池进行测试和基准测试，以确保你有效地平衡了队列等待时间、内存使用和 worker 池利用率。
+
+### 队列压力和空闲线程
+
+Piscina 维护的线程池对可以创建的线程数量有最小和最大限制。当创建一个 Piscina 实例时，它将立即生成最小数量的线程，然后根据需要创建额外的线程，直到达到 `maxThreads` 设置的限制。每当 worker 完成任务时，都会进行检查以确定是否有额外的工作要执行。如果没有额外的工作，该线程将被标记为空闲。
+默认情况下，空闲线程会立即关闭，Piscina 确保池始终至少维持最小值。
+
+当 Piscina 池正在处理任务流时（例如，处理 http 服务器请求，如 examples/react-ssr 中的 React 服务器端渲染示例），如果接收和排队新任务的速率不足以防止 worker 变为空闲并终止，池可能会经历颠簸效应 —— 过度创建和终止 worker，这将导致净性能损失。有几种策略可以避免这种搅动：
+
+- 策略 1：确保新任务的队列速率足以防止 worker 变为空闲。我们将此称为“队列压力”。如果队列压力太低，worker 将变为空闲并终止。如果队列压力太高，任务将堆积，经历增加的等待延迟，并消耗额外的内存。
+
+- 策略 2：增加 `idleTimeout` 配置选项。默认情况下，空闲线程会立即终止。`idleTimeout` 选项可用于指定在终止 worker 之前等待额外任务提交的更长时间段。如果队列压力没有维持，这可能会导致 worker 处于空闲状态，但这比线程重复终止和重新创建时发生的颠簸对性能的影响要小。
+
+- 策略 3：增加 `minThreads` 配置选项。这与增加 `idleTimeout` 具有相同的基本效果。如果队列压力不够高，worker 可能会无限期地处于空闲状态，但性能受到的打击会更小。
+
+在使用 Piscina 的应用程序中，结合使用这三种方法并调整各种配置参数以找到最适合应用程序工作负载和部署环境能力的组合将是最有效的。没有一组选项是最有效的。
+
+### Linux 系统上的线程优先级
+
+在支持 [`nice(2)`][https://linux.die.net/man/2/nice] 的 Unix 系统和 Windows 上，Piscina 能够设置池中每个 worker 的优先级。要使用此机制，需要额外的可选原生插件依赖项（`@napi-rs/nice`, `npm i @napi-rs/nice`）。
+一旦安装了 [`@napi-rs/nice`][https://www.npmjs.com/package/@napi-rs/nice]，创建带有 `niceIncrement` 配置选项的 `Piscina` 实例将设置池的优先级：
+
+```js
+const Piscina = require('piscina')
+const { WindowsThreadPriority } = require('@napi-rs/nice')
+const pool = new Piscina({
+  worker: '/absolute/path/to/worker.js',
+  niceIncrement:
+    process.platform !== 'win32'
+      ? 20
+      : WindowsThreadPriority.ThreadPriorityHighest,
+})
+```
+
+`niceIncrement` 越高，池化 worker 的 CPU 调度优先级就越低，这通常会延长 CPU 密集型任务的执行时间，但有助于防止这些线程从主 Node.js 事件循环线程中窃取 CPU 时间。这是否是一件好事完全取决于你的应用程序，并且需要仔细分析才能正确设置。
+
+调整 `niceIncrement` 时需要注意的关键指标是 worker 池中任务的采样运行时间（使用 [`runTime`][] 属性）和 [Node.js 主线程事件循环的延迟][delay of the Node.js main thread event loop]。
+
+### 多线程池和将 Piscina 作为依赖项嵌入
+
+每个 `Piscina` 实例创建一个单独的线程池，并且在运行时不知道其他实例的存在。当在单个应用程序中创建多个池时，各种线程可能会相互竞争，并与 Node.js 主事件循环线程竞争，并可能导致系统性能的整体下降。
+
+嵌入 Piscina 作为依赖项的模块*应该*通过文档明确说明正在使用线程。如果这些模块能够让用户提供现有的 `Piscina` 实例作为配置选项，而不是总是创建自己的实例，那就太理想了。

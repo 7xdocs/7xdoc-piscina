@@ -1,0 +1,125 @@
+---
+id: Web Streams
+sidebar_position: 25
+---
+
+import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+你可以使用 Piscina 处理像 [Web Streams](https://developer.mozilla.org/en-US/docs/Web/API/Streams_API) 这样的现代 Web API。Web Streams 允许跨多个线程高效处理流数据。这对于涉及大型数据集或实时数据处理的场景特别有用，在这些场景中，多线程的好处可能非常显着。
+
+在主脚本 (`index.mjs`) 中，我们创建一个 Piscina 实例并设置一个生成数字序列的 `ReadableStream`。我们还创建了一个简单地记录其接收到的每个块的 `WritableStream`。然后，该脚本在 worker 池中运行一个任务，并将两个流作为参数传递。
+
+worker 脚本 (`worker.mjs`) 定义了一个异步函数，该函数从提供的 `ReadableStream` 读取并写入 `WritableStream`。它使用 for-await 循环来迭代 `ReadableStream` 中的块，将每个块写入 `WritableStream`。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="worker.mjs"
+export default async function ({ readable, writable }) {
+  const writer = writable.getWriter();
+  for await (const chunk of readable) {
+    await writer.write(chunk);
+  }
+  writer.close();
+}
+```
+
+```javascript title="index.mjs"
+import Piscina from 'piscina';
+import {
+  ReadableStream,
+  WritableStream
+} from 'node:stream/web';
+
+const pool = new Piscina({
+  filename: new URL('./worker.mjs', import.meta.url).href
+});
+
+const readable = new ReadableStream({
+  start () {
+    this.chunks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+  },
+
+  pull (controller) {
+    const chunk = this.chunks.shift();
+    controller.enqueue(chunk);
+    if (this.chunks.length === 0) {
+      controller.close();
+    }
+  }
+});
+
+const writable = new WritableStream({
+  write (chunk) {
+    console.log(chunk);
+  }
+});
+
+(async function () {
+  await pool.run({ readable, writable }, { transferList: [readable, writable] });
+})()
+
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="worker.ts"
+import { ReadableStream, WritableStream } from 'node:stream/web';
+
+export default async function ({ readable, writable }: { readable: ReadableStream, writable: WritableStream }): Promise<void> {
+  const writer = writable.getWriter();
+  for await (const chunk of readable) {
+    await writer.write(chunk);
+  }
+  writer.close();
+}
+```
+
+```typescript title="index.ts"
+import { resolve } from 'path';
+import Piscina from 'piscina';
+import {
+  ReadableStream,
+  WritableStream
+} from 'node:stream/web';
+import { filename } from './worker';
+
+const pool = new Piscina({
+  filename: resolve(__dirname, 'workerWrapper.js'),
+  workerData: { fullpath: filename },
+});
+
+const readable = new ReadableStream({
+  start () {
+    this.chunks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+  },
+
+  pull (controller) {
+    const chunk = this.chunks.shift();
+    controller.enqueue(chunk);
+    if (this.chunks.length === 0) {
+      controller.close();
+    }
+  }
+});
+
+const writable = new WritableStream({
+  write (chunk) {
+    console.log(chunk);
+  }
+});
+(async function () {
+  await pool.run({ readable, writable }, { transferList: [readable, writable] });
+})()
+```
+
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+此示例的一个关键方面是在运行任务时使用 `transferList` 选项。这允许将 `ReadableStream` 和 `WritableStream` 实例转移到 worker 线程，而不是被克隆。这对于维护跨线程的流的完整性至关重要。
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/webstreams) 上查看此示例。

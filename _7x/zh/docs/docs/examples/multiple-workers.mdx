@@ -1,0 +1,48 @@
+---
+id: Multiple Workers
+sidebar_position: 10
+---
+
+import { WorkerWrapperComponent } from "@site/src/components/WorkerWrapper.mdx";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+单个 Piscina 池可以同时运行多个 worker。为此，请将 worker `filename` 传递给 `run` 方法，而不是 Piscina 构造函数。
+
+要使用 Typescript 处理多个 worker，请查看 [一个文件中的多个 worker](./multiple-workers-one-file.mdx)。
+
+```javascript title="index.js"
+"use strict";
+
+const Piscina = require("piscina");
+const { resolve } = require("path");
+
+const pool = new Piscina();
+
+(async () => {
+  console.log(
+    await Promise.all([
+      pool.run({ a: 2, b: 3 }, { filename: resolve(__dirname, "add_worker") }),
+      pool.run(
+        { a: 2, b: 3 },
+        { filename: resolve(__dirname, "multiply_worker") }
+      ),
+    ])
+  );
+})();
+```
+
+以下是本示例中使用的两个 worker 文件：
+
+```javascript title="add_worker.js"
+"use strict";
+
+module.exports = ({ a, b }) => a + b;
+```
+
+```javascript title="multiply_worker.js"
+"use strict";
+
+module.exports = ({ a, b }) => a * b;
+```
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/multiple-workers) 上查看此示例。

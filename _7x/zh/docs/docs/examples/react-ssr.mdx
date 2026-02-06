@@ -1,0 +1,464 @@
+---
+id: React Server Side Rendering
+sidebar_position: 14
+---
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+import { WorkerWrapperComponent } from "@site/src/components/WorkerWrapper.mdx";
+
+
+此示例解释了如何使用 Piscina 进行 React 组件的服务端渲染 (SSR)。我们将比较使用 Piscina 的池化版本与非池化版本，以突显使用线程池进行 SSR 的好处。
+
+首先，请确保你已安装以下依赖项：
+
+```bash
+npm install fastify fastify-piscina react react-dom lorem-ipsum
+```
+如果你在项目中使用 TypeScript，请同时安装：
+
+```bash
+npm install -D typescript @types/react @types/react-dom @types/node
+```
+worker 文件中的函数使用 `ReactDOMServer.renderToString()` 渲染两个 React 组件：`Greeting` 和 `Lorem`。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="worker.js"
+'use strict';
+
+const React = require('react');
+const ReactDOMServer = require('react-dom/server');
+const { Greeting, Lorem } = require('./components');
+
+module.exports = ({ name }) => {
+  return `
+  <!doctype html>
+    <html>
+    <body>
+    <div id="root">${
+      ReactDOMServer.renderToString(React.createElement(Greeting, { name }))
+    }</div>
+    ${
+      ReactDOMServer.renderToString(React.createElement(Lorem))
+    }
+    <script src="/static/home.js"></script>
+  </body>
+  </html>`;
+};
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="worker.ts"
+import React from 'react';
+import ReactDOMServer from 'react-dom/server';
+import { Greeting, Lorem } from './components';
+
+export const filename = __filename;
+
+interface WorkerInput {
+  name: string;
+}
+
+export function renderPage({ name }: WorkerInput): string {
+  return `
+  <!doctype html>
+    <html>
+    <body>
+    <div id="root">${
+      ReactDOMServer.renderToString(React.createElement(Greeting, { name }))
+    }</div>
+    ${
+      ReactDOMServer.renderToString(React.createElement(Lorem))
+    }
+    <script src="/static/home.js"></script>
+  </body>
+  </html>`;
+}
+```
+
+</TabItem>
+</Tabs>
+
+以下是本示例中使用的组件：
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="components/greeting.js"
+'use strict';
+
+const React = require('react');
+
+class Greeting extends React.Component {
+  render () {
+    return React.createElement('div', null, 'hello ' + this.props.name);
+  }
+}
+
+module.exports = Greeting;
+```
+
+```javascript title="components/lorem.js"
+'use strict';
+
+const React = require('react');
+const { LoremIpsum } = require('lorem-ipsum');
+
+class Paragraph extends React.Component {
+  #lorem;
+
+  constructor (props) {
+    super(props);
+    this.#lorem = new LoremIpsum({
+      sentencesPerParagraph: {
+        max: 8,
+        min: 4
+      },
+      wordsPerSentence: {
+        max: 16,
+        min: 4
+      }
+    });
+  }
+
+  render () {
+    return React.createElement('div', null, this.#lorem.generateParagraphs(1));
+  }
+}
+
+class Lorem extends React.Component {
+  render () {
+    const children = [];
+    for (let n = 0; n < Math.floor(Math.random() * 50); n++) {
+      children.push(React.createElement(Paragraph, { key: n }));
+    }
+    return React.createElement('div', null, children);
+  }
+}
+
+module.exports = Lorem;
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="components/greeting.tsx"
+import React from 'react';
+
+interface GreetingProps {
+  name: string;
+}
+
+class Greeting extends React.Component<GreetingProps> {
+  render() {
+    return React.createElement('div', null, 'hello ' + this.props.name);
+  }
+}
+
+export default Greeting;
+```
+
+```typescript title="components/lorem.tsx"
+import React from 'react';
+import { LoremIpsum } from 'lorem-ipsum';
+
+class Paragraph extends React.Component {
+  private lorem: LoremIpsum;
+
+  constructor(props: {}) {
+    super(props);
+    this.lorem = new LoremIpsum({
+      sentencesPerParagraph: {
+        max: 8,
+        min: 4
+      },
+      wordsPerSentence: {
+        max: 16,
+        min: 4
+      }
+    });
+  }
+
+  render() {
+    return React.createElement('div', null, this.lorem.generateParagraphs(1));
+  }
+}
+
+class Lorem extends React.Component {
+  render() {
+    const children = [];
+    for (let n = 0; n < Math.floor(Math.random() * 50); n++) {
+      children.push(React.createElement(Paragraph, { key: n }));
+    }
+    return React.createElement('div', null, children);
+  }
+}
+
+export default Lorem;
+```
+
+</TabItem>
+</Tabs>
+
+### 池化版本
+在代码的池化版本中，我们设置了一个集成了 Piscina 的 Fastify 服务器。我们注册 `fastify-piscina` 插件，将其配置为使用带有 6 个线程的 `worker.js` 文件。根路由 (`/`) 使用 `fastify.runTask()` 在 worker 线程中执行渲染。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="pooled.js"
+'use strict';
+
+const fastify = require('fastify')();
+const { resolve } = require('path');
+
+fastify.register(require('fastify-piscina'), {
+  filename: resolve(__dirname, 'worker.js'),
+  execArgv: [],
+  minThreads: 6,
+  maxThreads: 6
+});
+
+// Declare a route
+fastify.get('/', async () => fastify.runTask({ name: 'James' }));
+
+// Run the server!
+const start = async () => {
+  try {
+    await fastify.listen(3000);
+  } catch (err) {
+    process.exit(1);
+  }
+};
+start();
+
+process.on('SIGINT', () => {
+  const waitTime = fastify.piscina.waitTime;
+  console.log('\nMax Queue Wait Time:', waitTime.max);
+  console.log('Mean Queue Wait Time:', waitTime.mean);
+  process.exit(0);
+});
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="pooled.ts"
+
+import { resolve } from 'path';
+import { filename } from './worker';
+
+const fastify = require('fastify')();
+
+fastify.register(require('fastify-piscina'), {
+  filename: resolve(__dirname, 'workerWrapper.js'),
+  workerData: { fullpath: filename },
+  execArgv: [],
+  minThreads: 6,
+  maxThreads: 6
+});
+
+// Declare a route
+fastify.get('/', async () => fastify.runTask({ name: 'James' }, { name: 'renderPage' }));
+
+// Run the server!
+const start = async () => {
+  try {
+    await fastify.listen(3000);
+  } catch (err) {
+    process.exit(1);
+  }
+};
+start();
+
+process.on('SIGINT', () => {
+  const waitTime = (fastify as any).piscina.waitTime;
+  console.log('\nMax Queue Wait Time:', waitTime.max);
+  console.log('Mean Queue Wait Time:', waitTime.mean);
+  process.exit(0);
+});
+```
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+### 非池化版本
+
+在服务器的非池化版本中，我们执行与池化版本相同的渲染，但没有线程池或 worker 管理。根路由 (`/`) 在请求处理程序中同步渲染 React 组件。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="unpooled.js"
+'use strict';
+
+const fastify = require('fastify')();
+const React = require('react');
+const ReactDOMServer = require('react-dom/server');
+const { Greeting, Lorem } = require('./components');
+
+// Declare a route
+fastify.get('/', async () => {
+  const name = 'James';
+  return `
+  <!doctype html>
+    <html>
+    <body>
+    <div id="root">${
+      ReactDOMServer.renderToString(React.createElement(Greeting, { name }))
+    }</div>
+    ${
+      ReactDOMServer.renderToString(React.createElement(Lorem))
+    }
+    <script src="/static/home.js"></script>
+  </body>
+  </html>`;
+});
+
+// Run the server!
+const start = async () => {
+  try {
+    await fastify.listen(3000);
+  } catch (err) {
+    process.exit(1);
+  }
+};
+start();
+```
+
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="unpooled.ts"
+import fastify from 'fastify';
+import React from 'react';
+import ReactDOMServer from 'react-dom/server';
+import { Greeting, Lorem } from './components';
+
+const server = fastify();
+
+// Declare a route
+server.get('/', async () => {
+  const name = 'James';
+  return `
+  <!doctype html>
+    <html>
+    <body>
+    <div id="root">${
+      ReactDOMServer.renderToString(React.createElement(Greeting, { name }))
+    }</div>
+    ${
+      ReactDOMServer.renderToString(React.createElement(Lorem))
+    }
+    <script src="/static/home.js"></script>
+  </body>
+  </html>`;
+});
+
+// Run the server!
+const start = async () => {
+  try {
+    await server.listen(3000);
+  } catch (err) {
+    process.exit(1);
+  }
+};
+start();
+```
+
+</TabItem>
+</Tabs>
+
+运行池化或非池化版本：
+
+<Tabs>
+<TabItem value="Pooled">
+```
+node pooled.js
+```
+</TabItem>
+<TabItem value="Unpooled">
+```
+node unpooled.js
+```
+</TabItem>
+</Tabs>
+
+在浏览器中访问 `http://localhost:3000` 以查看渲染的页面。
+
+## 基准测试结果
+
+我们使用 `autocannon` 对池化和非池化版本进行了基准测试。
+
+安装 autocannon：
+
+```bash
+npm i -g autocannon
+```
+
+然后运行以下脚本对结果进行基准测试：
+```bash
+autocannon http://localhost:3000
+```
+
+结果如下：
+
+### 池化版本结果
+
+```
+Running 10s test @ http://localhost:3000
+10 connections
+
+┌─────────┬──────┬──────┬───────┬───────┬────────┬──────────┬────────┐
+│ Stat    │ 2.5% │ 50%  │ 97.5% │ 99%   │ Avg    │ Stdev    │ Max    │
+├─────────┼──────┼──────┼───────┼───────┼────────┼──────────┼────────┤
+│ Latency │ 2 ms │ 4 ms │ 44 ms │ 63 ms │ 6.9 ms │ 10.98 ms │ 190 ms │
+└─────────┴──────┴──────┴───────┴───────┴────────┴──────────┴────────┘
+┌───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────┬────────┐
+│ Stat      │ 1%     │ 2.5%   │ 50%     │ 97.5%   │ Avg     │ Stdev   │ Min    │
+├───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────┼────────┤
+│ Req/Sec   │ 657    │ 657    │ 1,225   │ 2,067   │ 1,348.9 │ 454.88  │ 657    │
+├───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────┼────────┤
+│ Bytes/Sec │ 2.3 MB │ 2.3 MB │ 4.35 MB │ 7.12 MB │ 4.68 MB │ 1.55 MB │ 2.3 MB │
+└───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────┴────────┘
+
+Req/Bytes counts sampled once per second.
+# of samples: 10
+
+13k requests in 10.07s, 46.8 MB read
+```
+
+### 非池化版本结果
+
+```
+Running 10s test @ http://localhost:3000
+10 connections
+
+┌─────────┬──────┬───────┬───────┬───────┬──────────┬──────────┬────────┐
+│ Stat    │ 2.5% │ 50%   │ 97.5% │ 99%   │ Avg      │ Stdev    │ Max    │
+├─────────┼──────┼───────┼───────┼───────┼──────────┼──────────┼────────┤
+│ Latency │ 8 ms │ 22 ms │ 63 ms │ 75 ms │ 25.03 ms │ 14.78 ms │ 165 ms │
+└─────────┴──────┴───────┴───────┴───────┴──────────┴──────────┴────────┘
+┌───────────┬────────┬────────┬─────────┬─────────┬─────────┬────────┬────────┐
+│ Stat      │ 1%     │ 2.5%   │ 50%     │ 97.5%   │ Avg     │ Stdev  │ Min    │
+├───────────┼────────┼────────┼─────────┼─────────┼─────────┼────────┼────────┤
+│ Req/Sec   │ 234    │ 234    │ 419     │ 590     │ 395.6   │ 127.26 │ 234    │
+├───────────┼────────┼────────┼─────────┼─────────┼─────────┼────────┼────────┤
+│ Bytes/Sec │ 785 kB │ 785 kB │ 1.47 MB │ 1.97 MB │ 1.36 MB │ 439 kB │ 785 kB │
+└───────────┴────────┴────────┴─────────┴─────────┴─────────┴────────┴────────┘
+
+Req/Bytes counts sampled once per second.
+# of samples: 10
+
+4k requests in 10.22s, 13.6 MB read
+```
+
+使用 Piscina 的池化版本为服务端渲染提供了几个优势：
+- 它每秒处理的请求明显更多（平均 1,348.9 对 395.6）。
+- 它的延迟更低（平均 6.9ms 对 25.03ms）。
+- 它处理的数据更多（平均 4.68 MB/sec 对 1.36 MB/sec）。
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/react-ssr) 上查看此示例。

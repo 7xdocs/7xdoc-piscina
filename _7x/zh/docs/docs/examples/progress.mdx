@@ -1,0 +1,155 @@
+---
+id: Progress
+sidebar_position: 13
+---
+
+import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+你可以使用 `MessageChannel` 跟踪长时间运行的任务的进度。这可以适用于需要跟踪在 worker 线程中执行的长时间运行任务进度的用例。
+
+下面的示例展示了如何为 worker 线程中运行的任务添加进度条。首先，安装所需的依赖项：
+
+```bash
+npm install progress
+```
+主脚本为每个任务创建进度条，并根据从 worker 接收到的消息更新它们。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="index.js"
+'use strict';
+
+const Piscina = require('piscina');
+const { resolve } = require('path');
+const ProgressBar = require('progress');
+
+// Initialize Piscina with the worker file
+const piscina = new Piscina({
+  filename: resolve(__dirname, 'worker.js')
+});
+
+// Function to create and run a task with progress tracking
+async function task(a, b) {
+  // Create a progress bar for this task
+  const bar = new ProgressBar(':bar [:current/:total]', { total: b });
+
+  // Set up a MessageChannel for communication with the worker
+  const mc = new MessageChannel();
+
+  // Update the progress bar when a message is received from the worker
+  mc.port2.onmessage = () => bar.tick();
+
+  // Prevent the port from keeping the event loop alive
+  mc.port2.unref();
+
+  // Run the task in a worker, passing one port of the channel
+  return await piscina.run({ a, b, port: mc.port1 }, { transferList: [mc.port1] });
+}
+
+// Run multiple tasks concurrently
+Promise.all([
+  task(0, 50),
+  task(0, 25),
+  task(0, 90)
+]).catch((err) => console.error(err));
+```
+</TabItem>
+<TabItem value="Typescript">
+
+```typescript title="index.ts"
+import Piscina from "piscina";
+import { resolve } from "path";
+import { filename } from "./worker";
+import ProgressBar = require('progress');
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, "./workerWrapper.js"),
+  workerData: { fullpath: filename },
+});
+async function task(a: number, b: number): Promise<void> {
+  // Create a progress bar for this task
+  const bar = new ProgressBar(':bar [:current/:total]', { total: b });
+
+  // Set up a MessageChannel for communication with the worker
+  const mc = new MessageChannel();
+
+  // Update the progress bar when a message is received from the worker
+  mc.port2.onmessage = () => bar.tick();
+
+  // Prevent the port from keeping the event loop alive
+  mc.port2.unref();
+
+  // Run the task in a worker, passing one port of the channel
+  await piscina.run({ a, b, port: mc.port1 }, { transferList: [mc.port1], name: 'progressTask' });
+}
+
+// Run multiple tasks concurrently
+Promise.all([
+  task(0, 50),
+  task(0, 25),
+  task(0, 90)
+]).catch((err) => console.error(err));
+```
+<WorkerWrapperComponent/>
+
+</TabItem>
+</Tabs>
+
+在 worker 文件中，worker 接收 `port` 作为其输入的一部分。在处理任务时，它通过端口发送消息以指示进度。任务完成后，它将关闭端口。
+
+<Tabs>
+<TabItem value="Javascript">
+```javascript title="worker.js"
+const { setTimeout } = require('timers/promises');
+
+// Worker function that simulates a time-consuming task
+module.exports = async ({ a, b, port }) => {
+  for (let n = a; n < b; n++) {
+    // Simulate some work
+    await setTimeout(10);
+
+    // Send a message to indicate progress
+    port.postMessage(n);
+  }
+
+  // Close the port when the task is complete
+  port.close();
+};
+```
+</TabItem>
+<TabItem value="Typescript">
+```typescript title="worker.ts"
+import { resolve } from "path";
+import { setTimeout } from 'timers/promises';
+
+
+export const filename = resolve(__filename);
+interface TaskInput {
+  a: number;
+  b: number;
+  port: MessagePort;
+}
+
+// Worker function that simulates a time-consuming task
+export async function progressTask({ a, b, port }: TaskInput): Promise<void> {
+  for (let n = a; n < b; n++) {
+    // Simulate some work
+    await setTimeout(10);
+
+    // Send a message to indicate progress
+    port.postMessage(n);
+  }
+
+  // Close the port when the task is complete
+  port.close();
+}
+```
+</TabItem>
+</Tabs>
+
+运行此代码时，你应该会看到三个并发任务的进度条实时更新。
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/progress) 上查看此示例。

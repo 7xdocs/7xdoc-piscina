@@ -1,0 +1,79 @@
+---
+id: ES Module
+sidebar_position: 5
+---
+
+import { WorkerWrapperComponent } from "@site/src/components/WorkerWrapper.mdx";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+Piscina 开箱即用地支持 ES 模块 (ESM)。此示例演示如何在主脚本和 worker 文件中将 Piscina 与 ES 模块一起使用。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="index.mjs"
+import { Piscina } from "piscina";
+
+const piscina = new Piscina({
+  filename: new URL("./worker.mjs", import.meta.url).href,
+});
+
+(async () => {
+  const result = await piscina.run({ a: 4, b: 6 });
+  console.log(result);
+})(); // Prints 10
+```
+
+</TabItem>
+
+<TabItem value="Typescript">
+
+```typescript title="index.ts"
+import Piscina from "piscina";
+import { resolve } from "path";
+import { filename } from "./worker";
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, "./workerWrapper.js"),
+  workerData: { fullpath: filename },
+});
+(async () => {
+  const result = await piscina.run({ a: 4, b: 6 });
+  console.log(result);
+})();
+```
+
+</TabItem>
+
+</Tabs>
+worker 文件是一个简单的 ES 模块，导出一个默认函数：
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="worker.mjs"
+export default ({ a, b }) => {
+  return a + b;
+};
+```
+
+</TabItem>
+
+<TabItem value="Typescript">
+
+```typescript title="worker.ts"
+interface Input {
+  a: number;
+  b: number;
+}
+
+export default ({ a, b }: Input): number => {
+  return a + b;
+};
+```
+
+</TabItem>
+</Tabs>
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/es-module) 上查看此示例。

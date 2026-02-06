@@ -1,0 +1,88 @@
+---
+id: Messages
+sidebar_position: 7
+---
+
+import { WorkerWrapperComponent } from "@site/src/components/WorkerWrapper.mdx";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+Piscina 允许 worker 使用 `parentPort.postMessage()` 方法将消息发送回主线程。这对于发送进度更新或长时间运行任务执行期间的中间结果非常有用。
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="index.js"
+'use strict';
+
+const Piscina = require('piscina');
+const { resolve } = require('path');
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, 'worker.js')
+});
+
+(async function () {
+  piscina.on('message', (event) => {
+    console.log('Message received from worker: ', event);
+  });
+
+  await piscina.run();
+})();
+```
+
+</TabItem>
+
+<TabItem value="Typescript">
+
+```typescript title="index.ts"
+import Piscina from "piscina";
+import { resolve } from "path";
+import { filename } from "./worker";
+import { TransferListItem } from "piscina/dist/types";
+
+const piscina = new Piscina({
+  filename: resolve(__dirname, "./workerWrapper.js"),
+  workerData: { fullpath: filename },
+});
+
+(async function () {
+  piscina.on('message', (event: string) => {
+    console.log('Message received from worker: ', event);
+  });
+
+  await piscina.run({});
+})();
+```
+<WorkerWrapperComponent/>
+</TabItem>
+</Tabs>
+
+<Tabs>
+<TabItem value="Javascript">
+
+```javascript title="worker.js"
+'use strict';
+const { parentPort } = require('worker_threads');
+
+module.exports = () => {
+  parentPort.postMessage('hello from the worker pool');
+};
+```
+
+</TabItem>
+
+<TabItem value="Typescript">
+
+```typescript title="worker.ts"
+import { parentPort } from 'worker_threads';
+
+export default (): void => {
+  parentPort?.postMessage('hello from the worker pool');
+};
+```
+
+</TabItem>
+</Tabs>
+
+你也可以在 [github](https://github.com/piscinajs/piscina/tree/current/examples/messages) 上查看此示例。
