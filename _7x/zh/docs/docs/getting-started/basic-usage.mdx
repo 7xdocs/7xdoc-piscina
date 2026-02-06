@@ -6,19 +6,20 @@ import {WorkerWrapperComponent} from '@site/src/components/WorkerWrapper.mdx';
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
 
-## Setting Up Your Main File
+## 设置主文件
+
 <Tabs>
 <TabItem value="Javascript">
 ```javascript title='main.js'
 const path = require("path");
 const Piscina = require("piscina");
 
-// Create a new Piscina instance pointing to your worker file
+// 创建一个新的 Piscina 实例指向你的 worker 文件
 const piscina = new Piscina({
   filename: path.resolve(__dirname, "worker.js"),
 });
 
-// Run a task using Piscina
+// 使用 Piscina 运行一个任务
 (async () => {
   const result = await piscina.run({ a: 4, b: 6 });
   console.log(result); // prints 10
@@ -44,24 +45,24 @@ const piscina = new Piscina({
 </TabItem>
 </Tabs>
 
-## Using a Worker Wrapper File in a TypeScript Project
+## 在 TypeScript 项目中使用 Worker 包装器文件
 
-When working with TypeScript, you need to use a `workerWrapper.js` file to load your worker file correctly. This file checks if the provided file path ends with `.ts` and registers the `ts-node` compiler to handle TypeScript files. You can learn more about using Typescript with Piscina in the following [guide](./typescript.mdx).
+当使用 TypeScript 时，你需要使用 `workerWrapper.js` 文件来正确加载你的 worker 文件。该文件检查提供的文件路径是否以 `.ts` 结尾，并注册 `ts-node` 编译器来处理 TypeScript 文件。你可以在以下[指南](./typescript.mdx)中了解更多关于在 Piscina 中使用 Typescript 的信息。
 
 <WorkerWrapperComponent/>
 
-## Creating a Worker File
+## 创建 Worker 文件
 <Tabs>
 <TabItem value="Javascript">
 ```javascript tab={"label":"Javascript"} title='worker.js'
-// A simple worker function that adds two numbers
+// 一个简单的将两个数字相加的 worker 函数
 module.exports = ({ a, b }) => a + b;
 ```
 
 </TabItem>
 <TabItem value="Typescript">
 ```javascript tab={"label":"Typescript"} title='worker.ts'
-// A simple worker function that adds two numbers
+// 一个简单的将两个数字相加的 worker 函数
 const { resolve } = require("path");
 
 export const filename = resolve(__filename);
@@ -76,17 +77,17 @@ export function addNumbers({ a, b }: Inputs): number {
 </TabItem>
 </Tabs>
 
-## Using Async Functions or Promises
+## 使用异步函数或 Promise
 
-Workers can be asynchronous or return a promise:
+Worker 可以是异步的，也可以返回一个 promise：
 <Tabs>
 <TabItem value="Javascript">
 ```javascript tab={"label":"Javascript"}
 const { setTimeout } = require("timers/promises");
 
-// An async worker function with simulated delay
+// 一个带有模拟延迟的异步 worker 函数
 module.exports = async ({ a, b }) => {
-  // Fake some async activity with a delay
+  // 模拟一些带有延迟的异步活动
   await setTimeout(100);
   return a + b;
 };
@@ -101,9 +102,9 @@ interface WorkerInput {
   a: number;
   b: number;
 }
-// An async worker function with simulated delay
+// 一个带有模拟延迟的异步 worker 函数
 module.exports = async ({ a, b }: WorkerInput): Promise<number> => {
-  // Fake some async activity with a delay
+  // 模拟一些带有延迟的异步活动
   await setTimeout(100);
   return a + b;
 };
@@ -111,16 +112,16 @@ module.exports = async ({ a, b }: WorkerInput): Promise<number> => {
 </TabItem>
 </Tabs>
 
-## Supporting ECMAScript Modules (ESM)
+## 支持 ECMAScript 模块 (ESM)
 
-Piscina.js also works with ECMAScript modules:
+Piscina.js 也适用于 ECMAScript 模块：
 <Tabs>
 <TabItem value="Javascript">
 ```javascript
 import { Piscina } from "piscina";
 
 const piscina = new Piscina({
-  // The URL must be a file:// URL
+  // URL 必须是 file:// URL
   filename: new URL("./worker.mjs", import.meta.url).href,
 });
 
@@ -148,18 +149,18 @@ const piscina = new Piscina({
 </TabItem>
 </Tabs>
 
-In your worker module file:
+在你的 worker 模块文件中：
 <Tabs>
 <TabItem value="Javascript">
 
 ```javascript  title="worker.mjs"
-// Default export of an addition function
+// 加法函数的默认导出
 export default ({ a, b }) => a + b;
 ```
 </TabItem>
 <TabItem value="Typescript">
 ```javascript tab={"label":"Typescript"} title="worker.ts"
-// Default export of an addition function
+// 加法函数的默认导出
 interface Inputs {
   a: number;
   b: number;
@@ -173,9 +174,9 @@ export default function addNumbers({ a, b }: Inputs): number {
 </Tabs>
 
 
-## Exporting Multiple Worker Functions
+## 导出多个 Worker 函数
 
-A single worker file may export multiple named handler functions:
+单个 worker 文件可以导出多个命名处理函数：
 <Tabs>
 <TabItem value="Javascript">
 ```javascript tab={"label":"Javascript"} title="worker.js"
@@ -216,7 +217,7 @@ export { multiply, add };
 </Tabs>
 
 
-The export to target can then be specified when the task is submitted:
+然后可以在提交任务时指定要导出的目标：
 <Tabs>
 <TabItem value="Javascript">
 ```javascript tab={"label":"Javascript"} title="main.js"
@@ -225,12 +226,12 @@ The export to target can then be specified when the task is submitted:
 const Piscina = require("piscina");
 const { resolve } = require("path");
 
-// Initialize Piscina with the worker file
+// 使用 worker 文件初始化 Piscina
 const piscina = new Piscina({
   filename: resolve(__dirname, "worker.js"),
 });
 
-// Run multiple tasks concurrently
+// 并发运行多个任务
 (async () => {
   const [sum, product] = await Promise.all([
     piscina.run({ a: 4, b: 6 }, { name: "add" }),
@@ -252,7 +253,7 @@ const piscina = new Piscina({
   workerData: { fullpath: filename },
 });
 
-// Run multiple tasks concurrently
+// 并发运行多个任务
 (async () => {
   const [sum, product] = await Promise.all([
     piscina.run({ a: 4, b: 6 }, { name: "add" }),
@@ -265,13 +266,13 @@ const piscina = new Piscina({
 </Tabs>
 
 
-## Cancellable Tasks
+## 可取消的任务
 
-Piscina supports task cancellation even if the task has already been submitted to a worker and is being actively processed. This can be used, for instance, to cancel tasks that are taking too long to run.
+Piscina 支持任务取消，即使任务已经提交给 worker 并且正在积极处理中。例如，这可以用于取消运行时间过长的任务。
 
-Tasks can be canceled using an `AbortController` or an `EventEmitter`.
+可以使用 `AbortController` 或 `EventEmitter` 取消任务。
 
-### Using `AbortController`
+### 使用 `AbortController`
 <Tabs>
 <TabItem value="Javascript">
 ```javascript title="main.js"
@@ -280,22 +281,22 @@ Tasks can be canceled using an `AbortController` or an `EventEmitter`.
 const Piscina = require("piscina");
 const { resolve } = require("path");
 
-// Set up Piscina with the worker file
+// 设置带有 worker 文件的 Piscina
 const piscina = new Piscina({
   filename: resolve(__dirname, "worker.js"),
 });
 
-// Run a task and cancel it using AbortController
+// 运行一个任务并使用 AbortController 取消它
 (async () => {
   const abortController = new AbortController();
   const { signal } = abortController;
   const task = piscina.run({ a: 4, b: 6 }, { signal });
-  abortController.abort(); // Cancel the task
+  abortController.abort(); // 取消任务
 
   try {
     await task;
   } catch (err) {
-    console.log("The task was canceled"); // Handle the cancellation
+    console.log("The task was canceled"); // 处理取消
   }
 })();
 ```
@@ -307,23 +308,23 @@ import Piscina from "piscina";
 import { resolve } from "path";
 import { filename } from "./worker";
 
-// Set up Piscina with the worker and workerWrapper file
+// 设置带有 worker 和 workerWrapper 文件的 Piscina
 const piscina = new Piscina({
   filename: resolve(__dirname, "./workerWrapper.js"),
   workerData: { fullpath: filename },
 });
 
-// Run a task and cancel it using AbortController
+// 运行一个任务并使用 AbortController 取消它
 (async () => {
   const abortController = new AbortController();
   const { signal } = abortController;
   const task = piscina.run({ a: 4, b: 6 }, { signal });
-  abortController.abort(); // Cancel the task
+  abortController.abort(); // 取消任务
 
   try {
     await task;
   } catch (err) {
-    console.log("The task was canceled"); // Handle the cancellation
+    console.log("The task was canceled"); // 处理取消
   }
 })();
 ```
@@ -332,9 +333,9 @@ const piscina = new Piscina({
 </TabItem>
 </Tabs>
 
-### Using `EventEmitter`
+### 使用 `EventEmitter`
 
-A plain Node.js EventEmitter can also be used here, in which case, emitting the abort event on it will have the same effect.
+这里也可以使用普通的 Node.js EventEmitter，在这种情况下，在其上发出 abort 事件将具有相同的效果。
 <Tabs>
 <TabItem value="Javascript">
 ```javascript tab={"label":"Javascript"} title="main.js"
@@ -344,21 +345,21 @@ const Piscina = require("piscina");
 const EventEmitter = require("events");
 const { resolve } = require("path");
 
-// Initialize Piscina with the worker file
+// 初始化带有 worker 文件的 Piscina
 const piscina = new Piscina({
   filename: resolve(__dirname, "worker.js"),
 });
 
-// Run a task and cancel it using an EventEmitter
+// 运行一个任务并使用 EventEmitter 取消它
 (async () => {
   const ee = new EventEmitter();
   const task = piscina.run({ a: 4, b: 6 }, { signal: ee });
-  ee.emit("abort"); // Emit an 'abort' event to cancel the task
+  ee.emit("abort"); // 发出 'abort' 事件以取消任务
 
   try {
     await task;
   } catch (err) {
-    console.log("The task was canceled"); // Handle the cancellation
+    console.log("The task was canceled"); // 处理取消
   }
 })();
 ```
@@ -370,22 +371,22 @@ import Piscina from "piscina";
 import { resolve } from "path";
 import { filename } from "./worker";
 
-// Initialize Piscina with the worker and workerWrapper file
+// 初始化带有 worker 和 workerWrapper 文件的 Piscina
 const piscina = new Piscina({
   filename: resolve(__dirname, "./workerWrapper.js"),
   workerData: { fullpath: filename },
 });
 
-// Run a task and cancel it using an EventEmitter
+// 运行一个任务并使用 EventEmitter 取消它
 (async () => {
   const ee = new EventEmitter();
   const task = piscina.run({ a: 4, b: 6 }, { signal: ee });
-  ee.emit("abort"); // Emit an 'abort' event to cancel the task
+  ee.emit("abort"); // 发出 'abort' 事件以取消任务
 
   try {
     await task;
   } catch (err) {
-    console.log("The task was canceled"); // Handle the cancellation
+    console.log("The task was canceled"); // 处理取消
   }
 })();
 ```
@@ -394,4 +395,4 @@ const piscina = new Piscina({
 </TabItem>
 </Tabs>
 
-Find more use cases in the [Examples](../category/examples/) section of the documentation
+在文档的 [示例](../category/examples/) 部分查找更多用例
